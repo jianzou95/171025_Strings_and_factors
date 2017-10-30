@@ -73,3 +73,86 @@ bmi_data = bmi_data %>%
 
 bmi_data %>% 
   ggplot(aes(x = ind, y = insulin)) + geom_boxplot()
+
+
+## New York City restaurants
+library(tidyverse)
+library(httr)
+library(jsonlite)
+
+get_all_inspections = function(url) {
+  
+  all_inspections = vector("list", length = 0)
+  
+  loop_index = 1
+  chunk_size = 50000
+  DO_NEXT = TRUE
+  
+  while (DO_NEXT) {
+    message("Getting data, page ", loop_index)
+    
+    all_inspections[[loop_index]] = 
+      GET(url,
+          query = list(`$order` = "zipcode",
+                       `$limit` = chunk_size,
+                       `$offset` = as.integer((loop_index - 1) * chunk_size)
+          )
+      ) %>%
+      content("text") %>%
+      fromJSON() %>%
+      as_tibble()
+    
+    DO_NEXT = dim(all_inspections[[loop_index]])[1] == chunk_size
+    loop_index = loop_index + 1
+  }
+  
+  all_inspections
+  
+}
+
+url = "https://data.cityofnewyork.us/resource/9w7m-hzhe.json"
+
+nyc_inspections = get_all_inspections(url) %>%
+  bind_rows() 
+
+
+nyc_inspections %>% 
+  group_by(boro, grade) %>% 
+  summarize(n = n()) %>% 
+  spread(key = grade, value = n)
+
+nyc_inspections =
+  nyc_inspections %>%
+  filter(grade %in% c("A", "B", "C"), boro != "Missing") %>% 
+  mutate(boro = str_to_title(boro))
+
+nyc_inspections %>% 
+  filter(str_detect(dba, regex("pizza", ignore_case = TRUE))) %>% 
+  group_by(boro, grade) %>% 
+  summarize(n = n()) %>% 
+  spread(key = grade, value = n)
+
+# make bar plot
+nyc_inspections %>% 
+  filter(str_detect(dba, regex("pizza", ignore_case = TRUE))) %>%
+  ggplot(aes(x = boro, fill = grade)) + geom_bar()
+
+# Reorder the bar plot
+nyc_inspections %>% 
+  filter(str_detect(dba, regex("pizza", ignore_case = TRUE))) %>%
+  mutate(boro = fct_infreq(boro)) %>% #reorder according to the frequency
+  ggplot(aes(x = boro, fill = grade)) + geom_bar()
+
+# rename (not work)
+nyc_inspections %>% 
+  filter(str_detect(dba, regex("pizza", ignore_case = TRUE))) %>%
+  mutate(boro = fct_infreq(boro),
+         boro = replace(boro, which(boro == "Brooklyn"), "Hipsterville") %>%
+  ggplot(aes(x = boro, fill = grade)) + geom_bar()
+
+# rename (a feasible way for the factor)
+nyc_inspections %>% 
+  filter(str_detect(dba, regex("pizza", ignore_case = TRUE))) %>%
+  mutate(boro = fct_infreq(boro),
+         boro = fct_recode(boro, "Hipsterville" = "Brooklyn")) %>%
+  ggplot(aes(x = boro, fill = grade)) + geom_bar()
